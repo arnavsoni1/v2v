@@ -1,0 +1,101 @@
+#include <Arduino.h>
+#include <string.h>
+
+/* =========================
+   BSM STRUCT
+========================= */
+typedef struct {
+  char     vehicle_id[6];
+  uint8_t  vehicle_type;
+  float    lat;
+  float    lon;
+  float    speed_kmh;
+  float    heading_deg;
+  float    accel_ms2;
+  bool     brake_alert;
+  bool     emergency_active;
+  uint32_t timestamp_ms;
+} BSM_Packet;
+
+/* =========================
+   FIXED ML MODEL
+========================= */
+int predict(float *x) {
+    uint8_t votes[2] = {0};
+
+    // x[0] = speed
+    // x[1] = accel
+    // x[2] = brake
+
+    // Tree 1
+    if (x[0] > 80) votes[1]++;
+    else votes[0]++;
+
+    // Tree 2
+    if (x[1] < -2.0) votes[1]++;
+    else votes[0]++;
+
+    // Tree 3
+    if (x[2] == 1) votes[1]++;
+    else votes[0]++;
+
+    return votes[1] > votes[0] ? 1 : 0;
+}
+
+/* =========================
+   COLLISION LOGIC
+========================= */
+int predictCollision(BSM_Packet packet) {
+
+    float features[3];
+
+    features[0] = packet.speed_kmh;
+    features[1] = packet.accel_ms2;
+    features[2] = packet.brake_alert ? 1 : 0;
+
+    return predict(features);
+}
+
+/* =========================
+   SETUP
+========================= */
+void setup() {
+    Serial.begin(115200);
+}
+
+/* =========================
+   LOOP (TEST CASES)
+========================= */
+void loop() {
+
+    BSM_Packet packet;
+
+    strcpy(packet.vehicle_id, "VH-A");
+    packet.vehicle_type = 0;
+    packet.lat = 12.9716;
+    packet.lon = 77.5946;
+    packet.heading_deg = 90;
+    packet.emergency_active = false;
+    packet.timestamp_ms = millis();
+
+    // 🔹 CHANGE THESE VALUES TO TEST
+    packet.speed_kmh = random(20, 120);
+    packet.accel_ms2 = random(-5, 5);   // braking detection
+    packet.brake_alert = (packet.accel_ms2 < -2.0);
+
+    int result = predictCollision(packet);
+
+    Serial.print("Speed: "); Serial.print(packet.speed_kmh);
+    Serial.print(" | Accel: "); Serial.print(packet.accel_ms2);
+    Serial.print(" | Brake: "); Serial.print(packet.brake_alert);
+
+    if (result == 1) {
+        Serial.println("  ---> COLLISION RISK 🚨");
+    } else {
+        Serial.println("  ---> SAFE ✅");
+    }
+
+    Serial.println("----------------------");
+
+    delay(2000);
+}
